@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -172,6 +172,221 @@
           <button style="width: auto; padding: 6px 12px; font-size: 12px; margin-top: 0;" class="btn-danger" onclick="deleteCard('${item.id}')">削除</button>
         </div>
       `).join('');
+    };
+  </script>
+</body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ダイバーズ配列表共有アプリ</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { margin: 0; padding: 16px; background: #f4f6f8; color: #333; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    button { width: 100%; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; margin-top: 8px; }
+    .btn-primary { background: #007aff; color: white; }
+    .btn-danger { background: #ff3b30; color: white; }
+    input, select { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
+    .nav-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .nav-tabs button { flex: 1; padding: 8px; background: #e5e5ea; color: #333; font-size: 14px; margin: 0; }
+    .nav-tabs button.active { background: #007aff; color: white; }
+    
+    /* レアリティごとの装飾 */
+    .card-item { border-bottom: 1px solid #eee; padding: 12px 0; display: flex; justify-content: space-between; align-items: center; }
+    .rarity-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; color: #fff; min-width: 48px; text-align: center; margin-right: 12px; }
+    .badge-SEC { background: #ff2d55; box-shadow: 0 0 4px #ff2d55; }
+    .badge-UR { background: #ffcc00; color: #333; box-shadow: 0 0 4px #ffcc00; }
+    .badge-SR { background: #a2a2bd; }
+    .badge-R  { background: #5ac8fa; }
+    .badge-N  { background: #8e8e93; }
+    
+    /* パターンバッジの装飾 */
+    .pattern-badge { display: inline-block; padding: 2px 6px; background: #eee; color: #555; border-radius: 4px; font-size: 11px; margin-bottom: 4px; font-weight: bold; }
+
+    .card-info { flex: 1; display: flex; align-items: center; }
+    .card-name { font-size: 15px; font-weight: bold; }
+    .card-time { font-size: 11px; color: #999; margin-top: 4px; }
+    
+    .filter-box { background: #eef2f5; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+
+  <!-- タブナビゲーション -->
+  <div class="nav-tabs">
+    <button id="tabList" class="active" onclick="switchTab('list')">みんなの配列表</button>
+    <button id="tabManage" onclick="switchTab('manage')">排出登録</button>
+  </div>
+
+  <!-- 配列表画面 (閲覧用) -->
+  <div id="listView" class="card">
+    <h3 style="margin-top: 0; margin-bottom: 12px;">最新の排出順</h3>
+    
+    <!-- パターン絞り込み機能 -->
+    <div class="filter-box">
+      <label style="font-size: 13px; font-weight: bold; color: #555;">表示するパターン:</label>
+      <select id="filterPattern" onchange="renderArrays()" style="margin-bottom: 0; margin-top: 4px;">
+        <option value="ALL">すべて表示</option>
+        <option value="A">パターンA（左シリンダー等）</option>
+        <option value="B">パターンB（右シリンダー等）</option>
+        <option value="C">パターンC</option>
+        <option value="D">パターンD</option>
+      </select>
+    </div>
+
+    <div id="arrayContainer">読み込み中...</div>
+  </div>
+
+  <!-- 排出登録・管理画面 -->
+  <div id="manageView" class="card" style="display: none;">
+    <h3 style="margin-top: 0;">排出したカードを登録</h3>
+    
+    <label>配列パターン</label>
+    <select id="inputPattern">
+      <option value="A">パターンA（左シリンダー等）</option>
+      <option value="B">パターンB（右シリンダー等）</option>
+      <option value="C">パターンC</option>
+      <option value="D">パターンD</option>
+    </select>
+
+    <label>レアリティ</label>
+    <select id="inputRarity">
+      <option value="N">N (ノーマル)</option>
+      <option value="R">R (レア)</option>
+      <option value="SR">SR (スーパーレア)</option>
+      <option value="UR">UR (アルティメットレア)</option>
+      <option value="SEC">SEC (シークレット)</option>
+    </select>
+
+    <label>カード番号 / 名前 (任意)</label>
+    <input type="text" id="inputCard" placeholder="例: SD1-001 孫悟空">
+    
+    <button class="btn-primary" onclick="addCard()">配列に追加する</button>
+
+    <h3 style="margin-top: 32px;">登録履歴 (<span id="count">0</span>件)</h3>
+    <div id="manageContainer"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy } 
+      from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 先ほど作成していただいた新しい設定情報
+    const firebaseConfig = {
+      apiKey: "AIzaSyBez4K2ucO_UeizDN1QzMV7SAnz_trcJSE",
+      authDomain: "divers-8ca59.firebaseapp.com",
+      projectId: "divers-8ca59",
+      storageBucket: "divers-8ca59.firebasestorage.app",
+      messagingSenderId: "634964716377",
+      appId: "1:634964716377:web:9075786cd1ab1495c07a48",
+      measurementId: "G-14MHH2YPRR"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const arrayCol = collection(db, 'divers_arrays');
+
+    let cards = [];
+
+    // 新しい順（降順）でデータを取得
+    const q = query(arrayCol, orderBy('createdAt', 'desc'));
+    onSnapshot(q, (snapshot) => {
+      cards = [];
+      snapshot.forEach((doc) => {
+        cards.push({ id: doc.id, ...doc.data() });
+      });
+      window.renderArrays();
+    });
+
+    window.switchTab = function(tab) {
+      document.getElementById('listView').style.display = tab === 'list' ? 'block' : 'none';
+      document.getElementById('manageView').style.display = tab === 'manage' ? 'block' : 'none';
+      document.getElementById('tabList').className = tab === 'list' ? 'active' : '';
+      document.getElementById('tabManage').className = tab === 'manage' ? 'active' : '';
+    };
+
+    window.addCard = async function() {
+      const pattern = document.getElementById('inputPattern').value;
+      const rarity = document.getElementById('inputRarity').value;
+      const cardName = document.getElementById('inputCard').value.trim() || '不明';
+      
+      await addDoc(arrayCol, {
+        pattern: pattern, // パターン情報を追加
+        rarity: rarity,
+        name: cardName,
+        createdAt: Date.now()
+      });
+      
+      document.getElementById('inputCard').value = '';
+      alert(`[パターン${pattern}] に登録しました！`);
+    };
+
+    window.deleteCard = async function(id) {
+      if(confirm('この履歴を削除しますか？')) {
+        await deleteDoc(doc(db, 'divers_arrays', id));
+      }
+    };
+
+    function formatTime(timestamp) {
+      const d = new Date(timestamp);
+      return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    // リスト描画処理
+    window.renderArrays = function() {
+      const listContainer = document.getElementById('arrayContainer');
+      const manageContainer = document.getElementById('manageContainer');
+      const filterValue = document.getElementById('filterPattern').value;
+      
+      // 絞り込み処理
+      // filterValueが"ALL"なら全て、それ以外ならpatternが一致するものだけを抽出
+      const filteredCards = filterValue === 'ALL' 
+        ? cards 
+        : cards.filter(c => c.pattern === filterValue);
+
+      document.getElementById('count').innerText = cards.length;
+
+      if (filteredCards.length === 0) {
+        listContainer.innerHTML = '<p style="color:#666;">このパターンのデータはまだありません</p>';
+      } else {
+        listContainer.innerHTML = filteredCards.map((item, index) => `
+          <div class="card-item">
+            <div class="card-info">
+              <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
+              <div>
+                <span class="pattern-badge">パターン ${item.pattern || '未分類'}</span>
+                <div class="card-name">${item.name}</div>
+                <div class="card-time">${formatTime(item.createdAt)} 登録 (現在から ${index+1} 枚前)</div>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // 管理画面のリスト（ここでは常に全て表示するようにしています）
+      if(cards.length === 0) {
+        manageContainer.innerHTML = '';
+      } else {
+        manageContainer.innerHTML = cards.map(item => `
+          <div class="card-item">
+            <div class="card-info">
+              <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
+              <div>
+                <span class="pattern-badge">パターン ${item.pattern || '未分類'}</span>
+                <div class="card-name">${item.name}</div>
+                <div class="card-time">${formatTime(item.createdAt)}</div>
+              </div>
+            </div>
+            <button style="width: auto; padding: 6px 12px; font-size: 12px; margin-top: 0;" class="btn-danger" onclick="deleteCard('${item.id}')">削除</button>
+          </div>
+        `).join('');
+      }
     };
   </script>
 </body>
