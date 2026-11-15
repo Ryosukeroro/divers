@@ -117,7 +117,10 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+      
+    // ★別ファイルからマスターデータを読み込みます
+    import { cardMaster } from './master.js';
+    
     const firebaseConfig = {
       apiKey: "AIzaSyBez4K2ucO_UeizDN1QzMV7SAnz_trcJSE",
       authDomain: "divers-8ca59.firebaseapp.com",
@@ -137,23 +140,6 @@
     let sortableInstance = null;
     let currentVolume = "13"; 
     let unsubscribe = null;   
-
-    // =========================================
-    // ★ マスターデータ（ここにカードの情報を登録しておきます）
-    // =========================================
-    const cardMaster = {
-      "13": {
-        "1": { name: "孫悟空", rarity: "N", id: "SDV-001" },
-        "2": { name: "ベジータ", rarity: "N", id: "SDV-002" },
-        "11": { name: "トランクス：青年期", rarity: "SR", id: "SDV-011" },
-        "25": { name: "ピッコロ", rarity: "UR", id: "SDV-025" },
-        // ※必要に応じて 3, 4, 5... と書き足していってください！
-      },
-      "12": {
-        "1": { name: "孫悟空", rarity: "N", id: "SD1-001" },
-        "11": { name: "ベジータ", rarity: "SR", id: "SD1-011" },
-      }
-    };
 
     // ★ 番号入力による自動補完処理
     window.autoFill = function(index) {
