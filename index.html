@@ -108,4 +108,348 @@
           <option value="N">N</option><option value="R">R</option>
           <option value="SR">SR</option><option value="UR">UR</option>
           <option value="SEC">SEC</option><option value="GDR">GDR</option>
-        </
+        </select>
+      </div>
+      <div id="preview2" class="preview-text"></div>
+    </div>
+    
+    <div style="display: flex; gap: 8px;">
+      <button id="submitBtn" class="btn-primary" onclick="saveCard()">配列に追加する</button>
+      <button id="cancelEditBtn" class="btn-secondary" style="display: none; width: auto; flex: 0 0 100px;" onclick="cancelEdit()">取消</button>
+    </div>
+
+    <h3 style="margin-top: 32px; margin-bottom: 4px;">登録リスト (三本線を長押しで並び替え)</h3>
+    <div id="manageContainer"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } 
+      from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+      
+    import { cardMaster } from './master.js';
+    
+    const firebaseConfig = {
+      apiKey: "AIzaSyBez4K2ucO_UeizDN1QzMV7SAnz_trcJSE",
+      authDomain: "divers-8ca59.firebaseapp.com",
+      projectId: "divers-8ca59",
+      storageBucket: "divers-8ca59.firebasestorage.app",
+      messagingSenderId: "634964716377",
+      appId: "1:634964716377:web:9075786cd1ab1495c07a48",
+      measurementId: "G-14MHH2YPRR"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const arrayCol = collection(db, 'divers_arrays');
+
+    let cards = [];
+    let editingId = null; 
+    let sortableInstance = null;
+    let currentVolume = "13"; 
+    let unsubscribe = null;   
+
+    window.autoFill = function(index) {
+      const val = document.getElementById(`inputCard${index}`).value.trim();
+      const preview = document.getElementById(`preview${index}`);
+      const raritySelect = document.getElementById(`inputRarity${index}`);
+
+      if (/^\d+$/.test(val)) {
+        const numKey = parseInt(val, 10).toString();
+        const master = cardMaster[currentVolume];
+        
+        if (master && master[numKey]) {
+          preview.innerText = `✨ ${master[numKey].id} ${master[numKey].name} として登録されます`;
+          raritySelect.value = master[numKey].rarity.toUpperCase().trim(); 
+        } else {
+          preview.innerText = `※マスター未登録の番号です。そのまま手打ち名として登録されます。`;
+        }
+      } else {
+        preview.innerText = "";
+      }
+    };
+
+    const resolveCardData = (val, currentRarity) => {
+      if (/^\d+$/.test(val)) {
+        const numKey = parseInt(val, 10).toString();
+        const master = cardMaster[currentVolume];
+        if (master && master[numKey]) {
+          return {
+            name: `${master[numKey].id} ${master[numKey].name}`,
+            rarity: master[numKey].rarity.toUpperCase().trim() 
+          };
+        }
+      }
+      return { name: val, rarity: currentRarity };
+    };
+
+    window.migrateOldData = async function() {
+      if (!confirm('古いデータ全てに「12弾」のタグを付けます。よろしいですか？')) return;
+      const querySnapshot = await getDocs(arrayCol);
+      let count = 0;
+      for (const document of querySnapshot.docs) {
+        if (!document.data().volume) {
+          await updateDoc(doc(db, 'divers_arrays', document.id), { volume: "12" });
+          count++;
+        }
+      }
+      alert(`完了！ ${count} 件の過去データが12弾として復活しました！ページを再読み込みしてください。`);
+    };
+
+    window.changeVolume = function() {
+      currentVolume = document.getElementById('volumeSelect').value;
+      document.getElementById('preview1').innerText = '';
+      document.getElementById('preview2').innerText = '';
+      window.loadCards(); 
+    };
+
+    window.loadCards = function() {
+      if (unsubscribe) unsubscribe(); 
+      const q = query(arrayCol, where('volume', '==', currentVolume), orderBy('createdAt', 'asc'));
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        cards = [];
+        snapshot.forEach((doc) => { cards.push({ id: doc.id, ...doc.data() }); });
+        window.renderArrays();
+      });
+    };
+
+    window.loadCards();
+
+    window.switchTab = function(tab) {
+      document.getElementById('listView').style.display = tab === 'list' ? 'block' : 'none';
+      document.getElementById('manageView').style.display = tab === 'manage' ? 'block' : 'none';
+      document.getElementById('tabList').className = tab === 'list' ? 'active' : '';
+      document.getElementById('tabManage').className = tab === 'manage' ? 'active' : '';
+    };
+
+    window.saveCard = async function() {
+      const pattern = document.getElementById('inputPattern').value.trim() || '未分類';
+      
+      const c1Val = document.getElementById('inputCard1').value.trim();
+      const r1Selected = document.getElementById('inputRarity1').value;
+      
+      const c2Val = document.getElementById('inputCard2').value.trim();
+      const r2Selected = document.getElementById('inputRarity2').value;
+
+      if (!c1Val) return alert("1枚目のカード情報は入力してください！");
+
+      const data1 = resolveCardData(c1Val, r1Selected);
+      const name1 = data1.name;
+      const r1 = data1.rarity;
+      
+      let name2 = "";
+      let r2 = r2Selected;
+      if (c2Val) {
+        const data2 = resolveCardData(c2Val, r2Selected);
+        name2 = data2.name;
+        r2 = data2.rarity;
+      }
+      
+      if (editingId) {
+        await updateDoc(doc(db, 'divers_arrays', editingId), {
+          pattern: pattern, rarity: r1, name: name1
+        });
+        alert(`更新しました！`);
+        window.cancelEdit();
+      } else {
+        const baseTime = Date.now();
+        await addDoc(arrayCol, {
+          volume: currentVolume, pattern: pattern, rarity: r1, name: name1, createdAt: baseTime
+        });
+
+        if (name2) {
+          await addDoc(arrayCol, {
+            volume: currentVolume, pattern: pattern, rarity: r2, name: name2, createdAt: baseTime + 10
+          });
+        }
+
+        document.getElementById('inputCard1').value = '';
+        document.getElementById('inputCard2').value = '';
+        document.getElementById('preview1').innerText = '';
+        document.getElementById('preview2').innerText = '';
+        document.getElementById('inputRarity1').value = 'N';
+        document.getElementById('inputRarity2').value = 'N';
+        
+        const countMsg = name2 ? "2枚連続で" : "1枚";
+        alert(`[第${currentVolume}弾] に ${countMsg}追加しました！`);
+      }
+    };
+
+    window.editCard = function(id) {
+      const target = cards.find(c => c.id === id);
+      if(!target) return;
+
+      editingId = id;
+      document.getElementById('inputPattern').value = target.pattern || '';
+      document.getElementById('inputRarity1').value = target.rarity;
+      document.getElementById('inputCard1').value = target.name;
+      document.getElementById('preview1').innerText = '';
+      
+      document.getElementById('card2Box').style.display = 'none';
+      
+      document.getElementById('formTitle').innerText = '登録内容を編集';
+      document.getElementById('submitBtn').innerText = '更新する';
+      document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-danger');
+      document.getElementById('cancelEditBtn').style.display = 'block';
+      
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.cancelEdit = function() {
+      editingId = null;
+      document.getElementById('inputPattern').value = '';
+      document.getElementById('inputRarity1').value = 'N';
+      document.getElementById('inputCard1').value = '';
+      document.getElementById('preview1').innerText = '';
+      
+      document.getElementById('card2Box').style.display = 'block';
+      
+      document.getElementById('formTitle').innerText = '排出したカードを登録';
+      document.getElementById('submitBtn').innerText = '配列に追加する';
+      document.getElementById('submitBtn').classList.replace('btn-danger', 'btn-primary');
+      document.getElementById('cancelEditBtn').style.display = 'none';
+    };
+
+    window.deleteCard = async function(id) {
+      if(confirm('このデータを削除しますか？')) {
+        await deleteDoc(doc(db, 'divers_arrays', id));
+        if(editingId === id) window.cancelEdit();
+      }
+    };
+
+    window.renderArrays = function() {
+      const listContainer = document.getElementById('arrayContainer');
+      const manageContainer = document.getElementById('manageContainer');
+      const datalist = document.getElementById('patternList');
+      
+      const s1 = document.getElementById('search1') ? document.getElementById('search1').value.trim().toLowerCase() : '';
+      const s2 = document.getElementById('search2') ? document.getElementById('search2').value.trim().toLowerCase() : '';
+      
+      if (cards.length === 0) {
+        listContainer.innerHTML = '<p style="color:#666;">まだデータがありません</p>';
+        manageContainer.innerHTML = '';
+        datalist.innerHTML = '';
+        return;
+      }
+
+      const groupedCards = {};
+      cards.forEach(card => {
+        const p = card.pattern || '未分類';
+        if (!groupedCards[p]) groupedCards[p] = [];
+        groupedCards[p].push(card);
+      });
+
+      const uniquePatterns = Object.keys(groupedCards);
+      datalist.innerHTML = uniquePatterns.map(p => `<option value="${p}">`).join('');
+
+      let boardHtml = '';
+      let matchCount = 0; 
+
+      uniquePatterns.forEach(patternName => {
+        const patternCards = groupedCards[patternName];
+        let isPatternMatch = false;
+        let highlightIndices = new Set();
+
+        if (s1 === '' && s2 === '') {
+          isPatternMatch = true; 
+        } else if (s1 !== '' && s2 !== '') {
+          for (let i = 0; i < patternCards.length - 1; i++) {
+            const name1 = (patternCards[i].name || '').toLowerCase();
+            const name2 = (patternCards[i+1].name || '').toLowerCase();
+            if (name1.includes(s1) && name2.includes(s2)) {
+              isPatternMatch = true;
+              highlightIndices.add(i);
+              highlightIndices.add(i+1);
+            }
+          }
+        } else {
+          const targetSearch = s1 !== '' ? s1 : s2;
+          patternCards.forEach((c, i) => {
+            const cName = (c.name || '').toLowerCase();
+            if (cName.includes(targetSearch)) {
+              isPatternMatch = true;
+              highlightIndices.add(i);
+            }
+          });
+        }
+
+        if (isPatternMatch) {
+          matchCount++;
+          let columnHtml = `<div class="pattern-column"><h4 class="pattern-title">${patternName}</h4>`;
+          columnHtml += patternCards.map((item, index) => {
+            const highlightClass = highlightIndices.has(index) ? ' highlight-card' : '';
+            return `
+              <div class="card-item${highlightClass}">
+                <div class="card-info">
+                  <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
+                  <div>
+                    <div class="card-name">${item.name}</div>
+                    <div class="card-time">${index + 1}枚目</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+          columnHtml += `</div>`;
+          boardHtml += columnHtml;
+        }
+      });
+
+      if (matchCount === 0) {
+        listContainer.innerHTML = `
+          <div style="width: 100%; text-align: center; padding: 32px 0;">
+            <div style="font-size: 32px; margin-bottom: 8px;">💦</div>
+            <p style="color:#ff3b30; font-weight:bold; font-size: 16px; margin: 0;">該当する配列がありません</p>
+            <p style="color:#666; font-size: 12px; margin-top: 8px;">※まだ未登録のパターンか、順番が違う可能性があります</p>
+          </div>
+        `;
+      } else {
+        listContainer.innerHTML = boardHtml;
+      }
+
+      manageContainer.innerHTML = cards.map(item => `
+        <div class="card-item" data-id="${item.id}">
+          <div class="drag-handle">≡</div>
+          <div class="card-info">
+            <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
+            <div>
+              <span style="font-size: 11px; background: #eee; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #555;">${item.pattern || '未分類'}</span>
+              <div class="card-name" style="margin-top: 4px;">${item.name}</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 4px; flex-direction: column;">
+            <button style="padding: 6px 12px; font-size: 12px; border-radius: 4px; background: #007aff; color: #fff;" onclick="editCard('${item.id}')">編集</button>
+            <button style="padding: 6px 12px; font-size: 12px; border-radius: 4px; background: #ff3b30; color: #fff;" onclick="deleteCard('${item.id}')">削除</button>
+          </div>
+        </div>
+      `).join('');
+
+      if(sortableInstance) sortableInstance.destroy();
+      sortableInstance = Sortable.create(manageContainer, {
+        handle: '.drag-handle',
+        animation: 150,
+        onEnd: async function (evt) {
+          if (evt.oldIndex === evt.newIndex) return;
+          const items = Array.from(manageContainer.children);
+          const draggedId = items[evt.newIndex].getAttribute('data-id');
+          let newTime;
+          if (evt.newIndex === 0) {
+            const nextId = items[1].getAttribute('data-id');
+            newTime = cards.find(c => c.id === nextId).createdAt - 1000;
+          } else if (evt.newIndex === items.length - 1) {
+            const prevId = items[items.length - 2].getAttribute('data-id');
+            newTime = cards.find(c => c.id === prevId).createdAt + 1000;
+          } else {
+            const prevId = items[evt.newIndex - 1].getAttribute('data-id');
+            const nextId = items[evt.newIndex + 1].getAttribute('data-id');
+            const prevTime = cards.find(c => c.id === prevId).createdAt;
+            const nextTime = cards.find(c => c.id === nextId).createdAt;
+            newTime = (prevTime + nextTime) / 2;
+          }
+          await updateDoc(doc(db, 'divers_arrays', draggedId), { createdAt: newTime });
+        }
+      });
+    };
+  </script>
+</body>
+</html>
