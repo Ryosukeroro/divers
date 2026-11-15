@@ -43,7 +43,6 @@
   </style>
 </head>
 <body>
-  <!-- 弾の切り替えプルダウン -->
   <select id="volumeSelect" onchange="changeVolume()" style="margin-bottom: 16px; padding: 8px; font-size: 16px;">
     <option value="13">第13弾 (稼働予定)</option>
     <option value="12">第12弾</option>
@@ -91,7 +90,6 @@
       <div id="preview1" class="preview-text"></div>
     </div>
 
-    <!-- 2枚目 (編集時は非表示になる) -->
     <div id="card2Box" style="background: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 12px;">
       <label style="font-weight: bold; color: #007aff;">2枚目 (連続で引いた場合・任意)</label>
       <div style="display: flex; gap: 8px;">
@@ -118,7 +116,6 @@
     import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
       
-    // ★別ファイルからマスターデータを読み込みます
     import { cardMaster } from './master.js';
     
     const firebaseConfig = {
@@ -141,20 +138,20 @@
     let currentVolume = "13"; 
     let unsubscribe = null;   
 
-    // ★ 番号入力による自動補完処理
+    // 画面上のプルダウンを切り替える処理
     window.autoFill = function(index) {
       const val = document.getElementById(`inputCard${index}`).value.trim();
       const preview = document.getElementById(`preview${index}`);
       const raritySelect = document.getElementById(`inputRarity${index}`);
 
-      // 数字だけが入力された場合
       if (/^\d+$/.test(val)) {
-        const numKey = parseInt(val, 10).toString(); // "011"などを"11"に変換
+        const numKey = parseInt(val, 10).toString();
         const master = cardMaster[currentVolume];
         
         if (master && master[numKey]) {
           preview.innerText = `✨ ${master[numKey].id} ${master[numKey].name} として登録されます`;
-          raritySelect.value = master[numKey].rarity;
+          // master.jsに小文字で書いてあっても大文字に補正してUIに反映
+          raritySelect.value = master[numKey].rarity.toUpperCase().trim(); 
         } else {
           preview.innerText = `※マスター未登録の番号です。そのまま手打ち名として登録されます。`;
         }
@@ -163,16 +160,20 @@
       }
     };
 
-    // 数字入力ならマスターから正式名を取得するヘルパー関数
-    const resolveCardName = (val) => {
+    // ★追加：保存時に確実にマスターからレアリティも引っ張ってくる関数
+    const resolveCardData = (val, currentRarity) => {
       if (/^\d+$/.test(val)) {
         const numKey = parseInt(val, 10).toString();
         const master = cardMaster[currentVolume];
         if (master && master[numKey]) {
-          return `${master[numKey].id} ${master[numKey].name}`;
+          return {
+            name: `${master[numKey].id} ${master[numKey].name}`,
+            rarity: master[numKey].rarity.toUpperCase().trim() // マスターのレアリティを強制適用
+          };
         }
       }
-      return val; // 数字以外のテキストや、マスターにない番号はそのまま使う
+      // マスターになければ手打ちのまま返す
+      return { name: val, rarity: currentRarity };
     };
 
     window.migrateOldData = async function() {
@@ -190,7 +191,6 @@
 
     window.changeVolume = function() {
       currentVolume = document.getElementById('volumeSelect').value;
-      // 弾を切り替えたらプレビューをリセット
       document.getElementById('preview1').innerText = '';
       document.getElementById('preview2').innerText = '';
       window.loadCards(); 
@@ -219,40 +219,44 @@
       const pattern = document.getElementById('inputPattern').value.trim() || '未分類';
       
       const c1Val = document.getElementById('inputCard1').value.trim();
-      const r1 = document.getElementById('inputRarity1').value;
+      const r1Selected = document.getElementById('inputRarity1').value;
       
       const c2Val = document.getElementById('inputCard2').value.trim();
-      const r2 = document.getElementById('inputRarity2').value;
+      const r2Selected = document.getElementById('inputRarity2').value;
 
       if (!c1Val) return alert("1枚目のカード情報は入力してください！");
 
-      const name1 = resolveCardName(c1Val);
-      const name2 = c2Val ? resolveCardName(c2Val) : "";
+      // ★ここで確実なカード名とレアリティを取得
+      const data1 = resolveCardData(c1Val, r1Selected);
+      const name1 = data1.name;
+      const r1 = data1.rarity;
+      
+      let name2 = "";
+      let r2 = r2Selected;
+      if (c2Val) {
+        const data2 = resolveCardData(c2Val, r2Selected);
+        name2 = data2.name;
+        r2 = data2.rarity;
+      }
       
       if (editingId) {
-        // 編集モード（1件のみ更新）
         await updateDoc(doc(db, 'divers_arrays', editingId), {
           pattern: pattern, rarity: r1, name: name1
         });
         alert(`更新しました！`);
         window.cancelEdit();
       } else {
-        // ★新規追加（2枚同時登録に対応）
         const baseTime = Date.now();
-        
-        // 1枚目を登録
         await addDoc(arrayCol, {
           volume: currentVolume, pattern: pattern, rarity: r1, name: name1, createdAt: baseTime
         });
 
-        // 2枚目に入力があれば、ミリ秒を少しずらして順番通りに登録
         if (name2) {
           await addDoc(arrayCol, {
             volume: currentVolume, pattern: pattern, rarity: r2, name: name2, createdAt: baseTime + 10
           });
         }
 
-        // フォームをリセット
         document.getElementById('inputCard1').value = '';
         document.getElementById('inputCard2').value = '';
         document.getElementById('preview1').innerText = '';
@@ -275,7 +279,6 @@
       document.getElementById('inputCard1').value = target.name;
       document.getElementById('preview1').innerText = '';
       
-      // 編集時は2枚目入力ボックスを隠す
       document.getElementById('card2Box').style.display = 'none';
       
       document.getElementById('formTitle').innerText = '登録内容を編集';
@@ -293,7 +296,6 @@
       document.getElementById('inputCard1').value = '';
       document.getElementById('preview1').innerText = '';
       
-      // 2枚目入力ボックスを復活させる
       document.getElementById('card2Box').style.display = 'block';
       
       document.getElementById('formTitle').innerText = '排出したカードを登録';
