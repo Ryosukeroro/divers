@@ -19,7 +19,7 @@
     .nav-tabs button { flex: 1; padding: 8px; background: #e5e5ea; color: #333; font-size: 14px; margin: 0; }
     .nav-tabs button.active { background: #007aff; color: white; }
     
-    .card-item { border-bottom: 1px solid #ddd; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; background: #fff;}
+    .card-item { border-bottom: 1px solid #ddd; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; background: #fff; transition: background-color 0.2s;}
     .card-item:last-child { border-bottom: none; }
     .rarity-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; color: #fff; min-width: 44px; text-align: center; margin-right: 10px; }
     .badge-SEC { background: #ff2d55; box-shadow: 0 0 4px #ff2d55; }
@@ -36,19 +36,21 @@
     .pattern-column { flex: 0 0 280px; background: #f0f2f5; border-radius: 8px; padding: 12px; }
     .pattern-title { font-size: 14px; font-weight: bold; color: #444; margin-top: 0; margin-bottom: 12px; text-align: center; border-bottom: 2px solid #ccc; padding-bottom: 8px; }
     
+    /* ★検索でヒットしたカードを目立たせるスタイル */
+    .highlight-card { background-color: #fff9c4 !important; border-left: 4px solid #ffcc00; padding-left: 8px; }
     /* 並び替え時のハイライト */
     .sortable-ghost { opacity: 0.4; background: #eef2f5; }
     .drag-handle { color: #ccc; font-size: 18px; margin-right: 12px; cursor: grab; padding: 4px; }
   </style>
 </head>
 <body>
-  <!-- ★弾の切り替えプルダウン -->
+  <!-- 弾の切り替えプルダウン -->
   <select id="volumeSelect" onchange="changeVolume()" style="margin-bottom: 16px; padding: 8px; font-size: 16px;">
     <option value="13">第13弾 (稼働予定)</option>
     <option value="12">第12弾</option>
   </select>
 
-  <!-- ★過去データ一括アップデート用ボタンを追加 -->
+  <!-- 過去データ一括アップデート用ボタン（不要になったら消してOKです） -->
   <button class="btn-danger" style="margin-bottom: 16px;" onclick="migrateOldData()">🚨 過去データを12弾に一括アプデ</button>
 
   <div class="nav-tabs">
@@ -58,7 +60,11 @@
 
   <!-- 閲覧画面 -->
   <div id="listView" class="card" style="padding-right: 8px;">
-    <h3 style="margin-top: 0; margin-bottom: 12px;">現在の排出順（上から下へ排出）</h3>
+    <h3 style="margin-top: 0; margin-bottom: 8px;">現在の排出順（上から下へ排出）</h3>
+    
+    <!-- ★検索窓を追加 -->
+    <input type="text" id="searchInput" placeholder="🔍 カード名や配列パターンで検索..." oninput="renderArrays()" style="border: 2px solid #007aff; background: #f0f8ff;">
+    
     <div id="arrayContainer" class="pattern-board">読み込み中...</div>
   </div>
 
@@ -93,7 +99,6 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    // ★ getDocs を追加しています
     import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -115,235 +120,13 @@
     let cards = [];
     let editingId = null; 
     let sortableInstance = null;
-    let currentVolume = "13"; // 初期値は13弾
-    let unsubscribe = null;   // 監視キャンセル用
+    let currentVolume = "13"; 
+    let unsubscribe = null;   
 
-    // ★古いデータに一括で12弾タグを付ける秘密のプログラム
     window.migrateOldData = async function() {
       if (!confirm('古いデータ全てに「12弾」のタグを付けます。よろしいですか？')) return;
-
       const querySnapshot = await getDocs(arrayCol);
       let count = 0;
-
       for (const document of querySnapshot.docs) {
         const data = document.data();
-        // volume（弾の目印）がない昔のデータだけを狙い撃ち
-        if (!data.volume) {
-          await updateDoc(doc(db, 'divers_arrays', document.id), {
-            volume: "12"
-          });
-          count++;
-        }
-      }
-
-      alert(`完了！ ${count} 件の過去データが12弾として復活しました！ページを再読み込みしてください。`);
-    };
-
-    // ★弾を切り替えた時の処理
-    window.changeVolume = function() {
-      currentVolume = document.getElementById('volumeSelect').value;
-      window.loadCards(); 
-    };
-
-    // ★データを読み込む処理（選んでいる弾で絞り込む）
-    window.loadCards = function() {
-      if (unsubscribe) {
-        unsubscribe(); // 前の監視をストップ
-      }
-
-      // 「volume」が「現在選んでいる弾」と一致するものだけを取得
-      const q = query(
-        arrayCol,
-        where('volume', '==', currentVolume),
-        orderBy('createdAt', 'asc')
-      );
-
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        cards = [];
-        snapshot.forEach((doc) => {
-          cards.push({ id: doc.id, ...doc.data() });
-        });
-        window.renderArrays();
-      }, (error) => {
-        // インデックスエラーが出た時のためのおしらせ
-        console.error("Firebaseエラー:", error);
-        if(error.message.includes("requires an index")) {
-          alert("データベースのインデックス作成が必要です。パソコンのF12（開発者ツール）のConsoleにあるリンクから作成してください！");
-        }
-      });
-    };
-
-    // 初回読み込み
-    window.loadCards();
-
-    window.switchTab = function(tab) {
-      document.getElementById('listView').style.display = tab === 'list' ? 'block' : 'none';
-      document.getElementById('manageView').style.display = tab === 'manage' ? 'block' : 'none';
-      document.getElementById('tabList').className = tab === 'list' ? 'active' : '';
-      document.getElementById('tabManage').className = tab === 'manage' ? 'active' : '';
-    };
-
-    window.saveCard = async function() {
-      const pattern = document.getElementById('inputPattern').value.trim() || '未分類';
-      const rarity = document.getElementById('inputRarity').value;
-      const cardName = document.getElementById('inputCard').value.trim() || '不明';
-      
-      if (editingId) {
-        // 編集モード
-        await updateDoc(doc(db, 'divers_arrays', editingId), {
-          pattern: pattern,
-          rarity: rarity,
-          name: cardName
-        });
-        alert(`更新しました！`);
-        window.cancelEdit();
-      } else {
-        // 新規追加
-        await addDoc(arrayCol, {
-          volume: currentVolume, // ← 12弾か13弾かを保存
-          pattern: pattern,
-          rarity: rarity,
-          name: cardName,
-          createdAt: Date.now()
-        });
-        document.getElementById('inputCard').value = '';
-        alert(`[第${currentVolume}弾] に追加しました！`);
-      }
-    };
-
-    window.editCard = function(id) {
-      const target = cards.find(c => c.id === id);
-      if(!target) return;
-
-      editingId = id;
-      document.getElementById('inputPattern').value = target.pattern;
-      document.getElementById('inputRarity').value = target.rarity;
-      document.getElementById('inputCard').value = target.name;
-      
-      document.getElementById('formTitle').innerText = '登録内容を編集';
-      document.getElementById('submitBtn').innerText = '更新する';
-      document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-danger');
-      document.getElementById('cancelEditBtn').style.display = 'block';
-      
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    window.cancelEdit = function() {
-      editingId = null;
-      document.getElementById('inputPattern').value = '';
-      document.getElementById('inputRarity').value = 'N';
-      document.getElementById('inputCard').value = '';
-      
-      document.getElementById('formTitle').innerText = '排出したカードを登録';
-      document.getElementById('submitBtn').innerText = '配列に追加する';
-      document.getElementById('submitBtn').classList.replace('btn-danger', 'btn-primary');
-      document.getElementById('cancelEditBtn').style.display = 'none';
-    };
-
-    window.deleteCard = async function(id) {
-      if(confirm('このデータを削除しますか？')) {
-        await deleteDoc(doc(db, 'divers_arrays', id));
-        if(editingId === id) window.cancelEdit();
-      }
-    };
-
-    window.renderArrays = function() {
-      const listContainer = document.getElementById('arrayContainer');
-      const manageContainer = document.getElementById('manageContainer');
-      const datalist = document.getElementById('patternList');
-      
-      if (cards.length === 0) {
-        listContainer.innerHTML = '<p style="color:#666;">まだデータがありません</p>';
-        manageContainer.innerHTML = '';
-        datalist.innerHTML = '';
-        return;
-      }
-
-      // パターンごとにグループ分け
-      const groupedCards = {};
-      cards.forEach(card => {
-        const p = card.pattern || '未分類';
-        if (!groupedCards[p]) groupedCards[p] = [];
-        groupedCards[p].push(card);
-      });
-
-      // サジェスト更新
-      const uniquePatterns = Object.keys(groupedCards);
-      datalist.innerHTML = uniquePatterns.map(p => `<option value="${p}">`).join('');
-
-      // 閲覧画面の描画
-      let boardHtml = '';
-      uniquePatterns.forEach(patternName => {
-        const patternCards = groupedCards[patternName];
-        let columnHtml = `<div class="pattern-column"><h4 class="pattern-title">${patternName}</h4>`;
-        
-        columnHtml += patternCards.map((item, index) => `
-          <div class="card-item">
-            <div class="card-info">
-              <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
-              <div>
-                <div class="card-name">${item.name}</div>
-                <div class="card-time">${index + 1}枚目</div>
-              </div>
-            </div>
-          </div>
-        `).join('');
-        
-        columnHtml += `</div>`;
-        boardHtml += columnHtml;
-      });
-      listContainer.innerHTML = boardHtml;
-
-      // 管理画面の描画
-      manageContainer.innerHTML = cards.map(item => `
-        <div class="card-item" data-id="${item.id}">
-          <div class="drag-handle">≡</div>
-          <div class="card-info">
-            <span class="rarity-badge badge-${item.rarity}">${item.rarity}</span>
-            <div>
-              <span style="font-size: 11px; background: #eee; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #555;">${item.pattern || '未分類'}</span>
-              <div class="card-name" style="margin-top: 4px;">${item.name}</div>
-            </div>
-          </div>
-          <div style="display: flex; gap: 4px; flex-direction: column;">
-            <button style="padding: 6px 12px; font-size: 12px; border-radius: 4px; background: #007aff; color: #fff;" onclick="editCard('${item.id}')">編集</button>
-            <button style="padding: 6px 12px; font-size: 12px; border-radius: 4px; background: #ff3b30; color: #fff;" onclick="deleteCard('${item.id}')">削除</button>
-          </div>
-        </div>
-      `).join('');
-
-      // ドラッグ＆ドロップ並び替えの初期化
-      if(sortableInstance) sortableInstance.destroy();
-      sortableInstance = Sortable.create(manageContainer, {
-        handle: '.drag-handle',
-        animation: 150,
-        onEnd: async function (evt) {
-          if (evt.oldIndex === evt.newIndex) return;
-          
-          const items = Array.from(manageContainer.children);
-          const draggedId = items[evt.newIndex].getAttribute('data-id');
-          
-          let newTime;
-          if (evt.newIndex === 0) {
-            const nextId = items[1].getAttribute('data-id');
-            newTime = cards.find(c => c.id === nextId).createdAt - 1000;
-          } else if (evt.newIndex === items.length - 1) {
-            const prevId = items[items.length - 2].getAttribute('data-id');
-            newTime = cards.find(c => c.id === prevId).createdAt + 1000;
-          } else {
-            const prevId = items[evt.newIndex - 1].getAttribute('data-id');
-            const nextId = items[evt.newIndex + 1].getAttribute('data-id');
-            const prevTime = cards.find(c => c.id === prevId).createdAt;
-            const nextTime = cards.find(c => c.id === nextId).createdAt;
-            newTime = (prevTime + nextTime) / 2;
-          }
-
-          await updateDoc(doc(db, 'divers_arrays', draggedId), {
-            createdAt: newTime
-          });
-        }
-      });
-    };
-  </script>
-</body>
-</html>
+        if (!data.volume
