@@ -48,6 +48,9 @@
     <option value="12">第12弾</option>
   </select>
 
+  <!-- ★過去データ一括アップデート用ボタンを追加 -->
+  <button class="btn-danger" style="margin-bottom: 16px;" onclick="migrateOldData()">🚨 過去データを12弾に一括アプデ</button>
+
   <div class="nav-tabs">
     <button id="tabList" class="active" onclick="switchTab('list')">みんなの配列表</button>
     <button id="tabManage" onclick="switchTab('manage')">排出登録・管理</button>
@@ -90,7 +93,8 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where } 
+    // ★ getDocs を追加しています
+    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // ダイバーズ用のFirebase設定
@@ -113,6 +117,27 @@
     let sortableInstance = null;
     let currentVolume = "13"; // 初期値は13弾
     let unsubscribe = null;   // 監視キャンセル用
+
+    // ★古いデータに一括で12弾タグを付ける秘密のプログラム
+    window.migrateOldData = async function() {
+      if (!confirm('古いデータ全てに「12弾」のタグを付けます。よろしいですか？')) return;
+
+      const querySnapshot = await getDocs(arrayCol);
+      let count = 0;
+
+      for (const document of querySnapshot.docs) {
+        const data = document.data();
+        // volume（弾の目印）がない昔のデータだけを狙い撃ち
+        if (!data.volume) {
+          await updateDoc(doc(db, 'divers_arrays', document.id), {
+            volume: "12"
+          });
+          count++;
+        }
+      }
+
+      alert(`完了！ ${count} 件の過去データが12弾として復活しました！ページを再読み込みしてください。`);
+    };
 
     // ★弾を切り替えた時の処理
     window.changeVolume = function() {
@@ -173,7 +198,7 @@
         alert(`更新しました！`);
         window.cancelEdit();
       } else {
-        // 新規追加 ★ここで弾の情報を追加保存する
+        // 新規追加
         await addDoc(arrayCol, {
           volume: currentVolume, // ← 12弾か13弾かを保存
           pattern: pattern,
