@@ -42,6 +42,11 @@
   </style>
 </head>
 <body>
+  <!-- ★弾の切り替えプルダウン -->
+  <select id="volumeSelect" onchange="changeVolume()" style="margin-bottom: 16px; padding: 8px; font-size: 16px;">
+    <option value="13">第13弾 (稼働予定)</option>
+    <option value="12">第12弾</option>
+  </select>
 
   <div class="nav-tabs">
     <button id="tabList" class="active" onclick="switchTab('list')">みんなの配列表</button>
@@ -85,9 +90,10 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } 
+    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+    // ダイバーズ用のFirebase設定
     const firebaseConfig = {
       apiKey: "AIzaSyBez4K2ucO_UeizDN1QzMV7SAnz_trcJSE",
       authDomain: "divers-8ca59.firebaseapp.com",
@@ -103,18 +109,47 @@
     const arrayCol = collection(db, 'divers_arrays');
 
     let cards = [];
-    let editingId = null; // 編集中のIDを保持
+    let editingId = null; 
     let sortableInstance = null;
+    let currentVolume = "13"; // 初期値は13弾
+    let unsubscribe = null;   // 監視キャンセル用
 
-    // 昇順（古いものが上・新しいものが下）で取得
-    const q = query(arrayCol, orderBy('createdAt', 'asc'));
-    onSnapshot(q, (snapshot) => {
-      cards = [];
-      snapshot.forEach((doc) => {
-        cards.push({ id: doc.id, ...doc.data() });
+    // ★弾を切り替えた時の処理
+    window.changeVolume = function() {
+      currentVolume = document.getElementById('volumeSelect').value;
+      window.loadCards(); 
+    };
+
+    // ★データを読み込む処理（選んでいる弾で絞り込む）
+    window.loadCards = function() {
+      if (unsubscribe) {
+        unsubscribe(); // 前の監視をストップ
+      }
+
+      // 「volume」が「現在選んでいる弾」と一致するものだけを取得
+      const q = query(
+        arrayCol,
+        where('volume', '==', currentVolume),
+        orderBy('createdAt', 'asc')
+      );
+
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        cards = [];
+        snapshot.forEach((doc) => {
+          cards.push({ id: doc.id, ...doc.data() });
+        });
+        window.renderArrays();
+      }, (error) => {
+        // インデックスエラーが出た時のためのおしらせ
+        console.error("Firebaseエラー:", error);
+        if(error.message.includes("requires an index")) {
+          alert("データベースのインデックス作成が必要です。パソコンのF12（開発者ツール）のConsoleにあるリンクから作成してください！");
+        }
       });
-      window.renderArrays();
-    });
+    };
+
+    // 初回読み込み
+    window.loadCards();
 
     window.switchTab = function(tab) {
       document.getElementById('listView').style.display = tab === 'list' ? 'block' : 'none';
@@ -138,15 +173,16 @@
         alert(`更新しました！`);
         window.cancelEdit();
       } else {
-        // 新規追加
+        // 新規追加 ★ここで弾の情報を追加保存する
         await addDoc(arrayCol, {
+          volume: currentVolume, // ← 12弾か13弾かを保存
           pattern: pattern,
           rarity: rarity,
           name: cardName,
           createdAt: Date.now()
         });
         document.getElementById('inputCard').value = '';
-        alert(`[${pattern}] に登録しました！`);
+        alert(`[第${currentVolume}弾] に追加しました！`);
       }
     };
 
@@ -164,7 +200,6 @@
       document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-danger');
       document.getElementById('cancelEditBtn').style.display = 'block';
       
-      // 入力欄までスクロール
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -255,7 +290,7 @@
       // ドラッグ＆ドロップ並び替えの初期化
       if(sortableInstance) sortableInstance.destroy();
       sortableInstance = Sortable.create(manageContainer, {
-        handle: '.drag-handle', // 三本線をつかんだ時だけ動く
+        handle: '.drag-handle',
         animation: 150,
         onEnd: async function (evt) {
           if (evt.oldIndex === evt.newIndex) return;
@@ -265,15 +300,12 @@
           
           let newTime;
           if (evt.newIndex === 0) {
-            // 一番上に移動した場合
             const nextId = items[1].getAttribute('data-id');
             newTime = cards.find(c => c.id === nextId).createdAt - 1000;
           } else if (evt.newIndex === items.length - 1) {
-            // 一番下に移動した場合
             const prevId = items[items.length - 2].getAttribute('data-id');
             newTime = cards.find(c => c.id === prevId).createdAt + 1000;
           } else {
-            // 間に移動した場合（前後の時間の中央値をとる）
             const prevId = items[evt.newIndex - 1].getAttribute('data-id');
             const nextId = items[evt.newIndex + 1].getAttribute('data-id');
             const prevTime = cards.find(c => c.id === prevId).createdAt;
@@ -281,7 +313,6 @@
             newTime = (prevTime + nextTime) / 2;
           }
 
-          // データベースの時間を更新して順番を入れ替える
           await updateDoc(doc(db, 'divers_arrays', draggedId), {
             createdAt: newTime
           });
