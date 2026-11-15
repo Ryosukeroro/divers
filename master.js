@@ -8,7 +8,7 @@ export const cardMaster = {
   },
   "12": {
     "1": { name: "孫悟空", rarity: "N", id: "SDV12-001" },
-    "2": { name: "孫悟空", rarity: "SR", id: "SDV12-002" }
+    "2": { name: "孫悟空", rarity: "SR", id: "SDV12-002" },
     "3": { name: "孫悟飯", rarity: "N", id: "SDV12-003" }
   }
 };
