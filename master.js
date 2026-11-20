@@ -5,7 +5,8 @@ export const cardMaster = {
     "3": { name: "グレートサイヤマン", rarity: "N", id: "SDV13-003" },
     "4": { name: "グレートサイヤマン", rarity: "SR", id: "SDV13-004" },
     "5": { name: "孫悟天", rarity: "N", id: "SDV13-005" },
-    "6": { name: "トランクス：幼年期", rarity: "N", id: "SDV13-006" }
+    "6": { name: "トランクス：幼年期", rarity: "N", id: "SDV13-006" },
+    "7": { name: "ゴテンクス", rarity: "R", id: "SDV13-007" }
     // 13弾のカードリストが判明したら、ここにどんどん書き足していきます
   },
   "12": {
