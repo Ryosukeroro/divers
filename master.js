@@ -9,7 +9,8 @@ export const cardMaster = {
     "7": { name: "ゴテンクス", rarity: "R", id: "SDV13-007" },
     "8": { name: "ゴテンクス", rarity: "SR", id: "SDV13-008" },
     "9": { name: "界王神", rarity: "N", id: "SDV13-009" },
-    "10": { name: "キビト", rarity: "N", id: "SDV13-0010" }
+    "10": { name: "キビト", rarity: "N", id: "SDV13-0010" },
+    "11": { name: "孫悟空", rarity: "N", id: "SDV13-0011" }
     // 13弾のカードリストが判明したら、ここにどんどん書き足していきます
   },
   "12": {
