@@ -14,6 +14,7 @@ export const cardMaster = {
     "12": { name: "孫悟空", rarity: "R", id: "SDV13-0012" },
     "13": { name: "孫悟空", rarity: "SR", id: "SDV13-0013" },
     "14": { name: "孫悟空", rarity: "GDR", id: "SDV13-0014" }
+    "15": { name: "孫悟飯：青年期", rarity: "R", id: "SDV13-0015" }
     // 13弾のカードリストが判明したら、ここにどんどん書き足していきます
   },
   "12": {
