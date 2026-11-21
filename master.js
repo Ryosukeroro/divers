@@ -17,7 +17,7 @@ export const cardMaster = {
     "15": { name: "孫悟飯：青年期", rarity: "R", id: "SDV13-0015" },
     "16": { name: "孫悟天", rarity: "R", id: "SDV13-0016" },
     "17": { name: "ベジータ", rarity: "N", id: "SDV13-0017" },
-    "18": { name: "ベジータ", rarity: "R", id: "SDV13-0018" }
+    "18": { name: "ベジータ", rarity: "R", id: "SDV13-0018" },
     "19": { name: "ベジータ", rarity: "SR", id: "SDV13-019" },
     "20": { name: "トランクス：幼年期", rarity: "R", id: "SDV13-020" },
     "21": { name: "ゴテンクス", rarity: "N", id: "SDV13-021" },
